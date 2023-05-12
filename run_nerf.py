@@ -40,9 +40,9 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
         embedded = tf.concat([embedded, embedded_dirs], -1)
 
     outputs_flat = batchify(fn, netchunk)(embedded)
-    outputs = tf.reshape(outputs_flat, list(
-        inputs.shape[:-1]) + [outputs_flat.shape[-1]])
-    return outputs
+    return tf.reshape(
+        outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]]
+    )
 
 
 def render_rays(ray_batch,
@@ -253,8 +253,7 @@ def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
                 all_ret[k] = []
             all_ret[k].append(ret[k])
 
-    all_ret = {k: tf.concat(all_ret[k], 0) for k in all_ret}
-    return all_ret
+    return {k: tf.concat(all_ret[k], 0) for k in all_ret}
 
 
 def render(H, W, focal,
@@ -287,13 +286,7 @@ def render(H, W, focal,
       extras: dict with everything returned by render_rays().
     """
 
-    if c2w is not None:
-        # special case to render full image
-        rays_o, rays_d = get_rays(H, W, focal, c2w)
-    else:
-        # use provided ray batch
-        rays_o, rays_d = rays
-
+    rays_o, rays_d = get_rays(H, W, focal, c2w) if c2w is not None else rays
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
@@ -442,7 +435,7 @@ def create_nerf(args):
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  ('model_' in f and 'fine' not in f and 'optimizer' not in f)]
     print('Found ckpts', ckpts)
-    if len(ckpts) > 0 and not args.no_reload:
+    if ckpts and not args.no_reload:
         ft_weights = ckpts[-1]
         print('Reloading from', ft_weights)
         model.set_weights(np.load(ft_weights, allow_pickle=True))
@@ -576,7 +569,7 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
-    
+
     if args.random_seed is not None:
         print('Fixing random seed', args.random_seed)
         np.random.seed(args.random_seed)
@@ -681,13 +674,7 @@ def train():
     # Short circuit if only rendering out from trained model
     if args.render_only:
         print('RENDER ONLY')
-        if args.render_test:
-            # render_test switches to test poses
-            images = images[i_test]
-        else:
-            # Default is smoother render_poses path
-            images = None
-
+        images = images[i_test] if args.render_test else None
         testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format(
             'test' if args.render_test else 'path', start))
         os.makedirs(testsavedir, exist_ok=True)
@@ -849,18 +836,25 @@ def train():
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(
                 basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
-            imageio.mimwrite(moviebase + 'rgb.mp4',
-                             to8b(rgbs), fps=30, quality=8)
-            imageio.mimwrite(moviebase + 'disp.mp4',
-                             to8b(disps / np.max(disps)), fps=30, quality=8)
+            imageio.mimwrite(f'{moviebase}rgb.mp4', to8b(rgbs), fps=30, quality=8)
+            imageio.mimwrite(
+                f'{moviebase}disp.mp4',
+                to8b(disps / np.max(disps)),
+                fps=30,
+                quality=8,
+            )
 
             if args.use_viewdirs:
                 render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                 rgbs_still, _ = render_path(
                     render_poses, hwf, args.chunk, render_kwargs_test)
                 render_kwargs_test['c2w_staticcam'] = None
-                imageio.mimwrite(moviebase + 'rgb_still.mp4',
-                                 to8b(rgbs_still), fps=30, quality=8)
+                imageio.mimwrite(
+                    f'{moviebase}rgb_still.mp4',
+                    to8b(rgbs_still),
+                    fps=30,
+                    quality=8,
+                )
 
         if i % args.i_testset == 0 and i > 0:
             testsavedir = os.path.join(
@@ -893,7 +887,7 @@ def train():
                                                 **render_kwargs_test)
 
                 psnr = mse2psnr(img2mse(rgb, target))
-                
+
                 # Save out the validation image for Tensorboard-free monitoring
                 testimgdir = os.path.join(basedir, expname, 'tboard_val_imgs')
                 if i==0:

@@ -206,6 +206,4 @@ def sample_pdf(bins, weights, N_samples, det=False):
     denom = (cdf_g[..., 1]-cdf_g[..., 0])
     denom = tf.where(denom < 1e-5, tf.ones_like(denom), denom)
     t = (u-cdf_g[..., 0])/denom
-    samples = bins_g[..., 0] + t * (bins_g[..., 1]-bins_g[..., 0])
-
-    return samples
+    return bins_g[..., 0] + t * (bins_g[..., 1]-bins_g[..., 0])
